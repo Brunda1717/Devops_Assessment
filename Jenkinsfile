@@ -27,7 +27,7 @@ pipeline {
 
         stage('3. Validate Project Files') {
             steps {
-                echo 'Checking required files...'
+                echo 'Checking required project files...'
 
                 sh '''
                     test -f Dockerfile
@@ -44,51 +44,54 @@ pipeline {
                 echo 'Building MindBloom Docker image...'
 
                 sh '''
-                    docker build \
-                        -t ${IMAGE_NAME}:${IMAGE_TAG} .
+                    docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
                 '''
             }
         }
 
         stage('5. Verify Docker Image') {
             steps {
-                echo 'Verifying the Docker image...'
+                echo 'Verifying Docker image...'
 
                 sh '''
-                    docker image inspect ${IMAGE_NAME}:${IMAGE_TAG}
+                    docker image inspect ${IMAGE_NAME}:${IMAGE_TAG} > /dev/null
+
+                    echo "Docker image verified successfully."
                 '''
             }
         }
 
         stage('6. Test Website Content') {
             steps {
-                echo 'Testing MindBloom website content...'
+                echo 'Testing MindBloom HTML content...'
 
                 sh '''
                     grep -qi "MindBloom" index.html
                     grep -qi "meditation" index.html
 
-                    echo "Website content checks passed."
+                    echo "Website content tests passed."
                 '''
             }
         }
 
         stage('7. Stop Previous Container') {
             steps {
-                echo 'Removing the previous MindBloom container if it exists...'
+                echo 'Checking for an existing MindBloom container...'
 
                 sh '''
                     if docker container inspect ${CONTAINER_NAME} >/dev/null 2>&1; then
                         docker stop ${CONTAINER_NAME} || true
                         docker rm ${CONTAINER_NAME} || true
                     fi
+
+                    echo "Previous container cleanup completed."
                 '''
             }
         }
 
         stage('8. Deploy MindBloom') {
             steps {
-                echo 'Deploying MindBloom using Docker...'
+                echo 'Deploying MindBloom...'
 
                 sh '''
                     docker run -d \
@@ -102,53 +105,65 @@ pipeline {
 
         stage('9. Verify Deployment') {
             steps {
-                echo 'Checking container status...'
+                echo 'Verifying MindBloom container status...'
 
                 sh '''
-                    docker ps --filter "name=^/${CONTAINER_NAME}$"
-
                     docker container inspect \
                         --format='{{.State.Running}}' \
                         ${CONTAINER_NAME} | grep -q true
+
+                    echo "MindBloom container is running."
                 '''
             }
         }
 
-    stage('10. Test Live Website') {
-    steps {
-        echo 'Testing the deployed MindBloom website...'
+        stage('10. Test Live Website') {
+            steps {
+                echo 'Testing the website inside the MindBloom container...'
 
-        sh '''
-            for i in $(seq 1 15); do
-                if docker exec mindbloom wget -q -O /tmp/index.html http://localhost/; then
-                    break
-                fi
+                sh '''
+                    SUCCESS=0
 
-                sleep 2
-            done
+                    for i in $(seq 1 15); do
+                        if docker exec ${CONTAINER_NAME} \
+                            wget -q -O /tmp/mindbloom-test.html http://localhost/; then
+                            SUCCESS=1
+                            break
+                        fi
 
-            docker exec mindbloom grep -qi "MindBloom" /tmp/index.html
+                        sleep 2
+                    done
 
-            echo "MindBloom website test passed."
-        '''
+                    if [ "$SUCCESS" -ne 1 ]; then
+                        echo "ERROR: MindBloom website did not respond."
+                        docker logs ${CONTAINER_NAME}
+                        exit 1
+                    fi
+
+                    docker exec ${CONTAINER_NAME} \
+                        grep -qi "MindBloom" /tmp/mindbloom-test.html
+
+                    echo "MindBloom website HTTP test passed."
+                '''
+            }
+        }
     }
-}
 
     post {
         success {
             echo '''
             ==========================================
-                MINDBLOOM DEPLOYMENT SUCCESSFUL!
+              MINDBLOOM CI/CD PIPELINE SUCCESSFUL!
             ==========================================
-            Website: http://localhost:8082
-            Docker Image: mindbloom:1.0
-            Container: mindbloom
+              Docker Image: mindbloom:1.0
+              Container: mindbloom
+              Website: http://localhost:8082
             ==========================================
             '''
         }
 
         failure {
-            echo 'MindBloom pipeline failed. Check the Jenkins console output.'
+            echo 'MindBloom pipeline failed. Check Console Output.'
         }
 
         always {
