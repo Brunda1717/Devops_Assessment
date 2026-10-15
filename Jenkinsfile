@@ -114,27 +114,25 @@ pipeline {
             }
         }
 
-        stage('10. Test Live Website') {
-            steps {
-                echo 'Testing the deployed website...'
+    stage('10. Test Live Website') {
+    steps {
+        echo 'Testing the deployed MindBloom website...'
 
-                sh '''
-                    for i in $(seq 1 15); do
-                        if curl -fsS http://localhost:${HOST_PORT}/ -o /tmp/mindbloom-test.html; then
-                            break
-                        fi
+        sh '''
+            for i in $(seq 1 15); do
+                if docker exec mindbloom wget -q -O /tmp/index.html http://localhost/; then
+                    break
+                fi
 
-                        sleep 2
-                    done
+                sleep 2
+            done
 
-                    test -s /tmp/mindbloom-test.html
-                    grep -qi "MindBloom" /tmp/mindbloom-test.html
+            docker exec mindbloom grep -qi "MindBloom" /tmp/index.html
 
-                    echo "Live website test passed."
-                '''
-            }
-        }
+            echo "MindBloom website test passed."
+        '''
     }
+}
 
     post {
         success {
